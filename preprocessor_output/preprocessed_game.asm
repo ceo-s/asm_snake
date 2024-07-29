@@ -1,6 +1,8 @@
 %line 0+1 src/game.asm
-STDIN_FILENO equ 0
+NULL equ 0
 %line 0+0 src/game.asm
+
+STDIN_FILENO equ 0
 STDOUT_FILENO equ 1
 STDERR_FILENO equ 2
 
@@ -368,6 +370,7 @@ PWRITEV2 equ 328
 
 
 _strnlen:
+ push rcx
  mov rcx, 0
  mov rax, 0
 
@@ -382,13 +385,107 @@ _strnlen:
 
  .endwhile:
  mov rax, rcx
+ pop rcx
+ ret
+
+
+
+_int_to_str:
+ push rbp
+ push rdx
+ push rcx
+ push rbx
+ mov rbp, rsp
+ sub rsp, 0x18
+
+ mov rax, rdi
+ mov rdi, rsi
+ mov rsi, 10
+ mov rcx, 0
+
+ .while:
+ mov rdx, 0
+ div rsi
+ add rdx, '0'
+ mov rbx, rbp
+ sub rbx, rcx
+ mov BYTE [rbx], dl
+ inc rcx
+
+ test rax, rax
+ jnz .while
+
+ push rdi
+ push rsi
+
+
+%line 0+0 ""
+ mov rdi, rdi
+
+
+
+
+ mov rsi, rbx
+
+
+
+
+ mov rdx, rcx
+
+ call _memcpy
+%line 56+1 ./include/string.asm
+ pop rsi
+ pop rdi
+ mov BYTE [rdi + rcx], 0
+
+ mov rax, rcx
+
+ add rsp, 0x18
+ mov rsp, rbp
+ pop rbx
+ pop rcx
+ pop rdx
+ pop rbp
+ ret
+
+
+_memcpy:
+ push rax
+ push rcx
+ mov rax, 0
+ mov rcx, rdx
+
+ .while:
+ dec rcx
+ mov al, BYTE [rsi + rcx]
+ mov BYTE [rdi + rcx], al
+ test rcx, rcx
+ jnz .while
+
+ pop rcx
+ pop rax
  ret
 
 %line 5+1 ./include/io.asm
 [section .text]
 
 
+_putc:
+ push rsi
+ push rdi
+ mov rax, SYS_WRITE
+ mov rsi, rsp
+ mov rdi, STDOUT
+ mov rdx, 1
+ syscall
+ pop rdi
+ pop rsi
+ ret
+
+
 _puts:
+ push rax
+ push rsi
 
 
 %line 0+0 ""
@@ -400,12 +497,14 @@ _puts:
  mov rsi, 10000
 
  call _strnlen
-%line 10+1 ./include/io.asm
+%line 25+1 ./include/io.asm
  mov rdx, rax
  mov rax, SYS_WRITE
  mov rsi, rdi
  mov rdi, STDOUT
  syscall
+ pop rsi
+ pop rax
  ret
 
 
@@ -447,96 +546,284 @@ _print_integer:
 
 
 _sleep:
+ push rax
+ push rsi
+
  mov rax, SYS_NANOSLEEP
  mov rsi, 0
  syscall
+
+ pop rsi
+ pop rax
  ret
 
-%line 5+1 ./include/esccontrol.asm
+%line 6+1 ./include/esccontrol.asm
+[section .bss]
+ mv_buf resb 80
+ mv_ints_buf resb 24
+
 [section .data]
  mv_cursor_begin db `\033[`,0
- mv_cursor_delimetr db 59,0
- mv_cursor_end db `H`,0
+ mv_cursor_delimetr db 59
+ mv_cursor_end db `H`
+
+ clr_screen db `\x1B[2J`
 
 [section .text]
 
 
 _move_cursor:
+ push rbp
+ push rax
+ push rcx
+ mov rbp, rsp
+ push rdi
+ push rsi
+ mov rcx, mv_buf
+
 
 
 %line 0+0 ""
- mov rdi, mv_cursor_begin
+ mov rdi, rcx
+
+
+
+
+ mov rsi, mv_cursor_begin
+
+
+
+
+ mov rdx, 2
+
+ call _memcpy
+%line 31+1 ./include/esccontrol.asm
+ add rcx, 2
+
+
+%line 0+0 ""
+ mov rdi, [rbp - 0x10]
+
+
+
+
+ mov rsi, mv_ints_buf
+
+ call _int_to_str
+
+
+
+ mov rdi, rcx
+
+
+
+
+ mov rsi, mv_ints_buf
+
+
+
+
+ mov rdx, rax
+
+ call _memcpy
+%line 34+1 ./include/esccontrol.asm
+ add rcx, rax
+ mov al, BYTE [mv_cursor_delimetr]
+ mov BYTE [rcx], al
+ inc rcx
+
+
+%line 0+0 ""
+ mov rdi, [rbp - 0x8]
+
+
+
+
+ mov rsi, mv_ints_buf
+
+ call _int_to_str
+
+
+
+ mov rdi, rcx
+
+
+
+
+ mov rsi, mv_ints_buf
+
+
+
+
+ mov rdx, rax
+
+ call _memcpy
+%line 40+1 ./include/esccontrol.asm
+ add rcx, rax
+ mov al, BYTE [mv_cursor_end]
+ mov BYTE [rcx], al
+ inc rcx
+ mov BYTE [rcx], 0
+
+
+
+%line 0+0 ""
+ mov rdi, mv_buf
 
  call _puts
+%line 48+1 ./include/esccontrol.asm
+ sub rsp, 0x10
+ mov rsp, rbp
+ pop rcx
+ pop rax
+ pop rbp
+ ret
 
 
-
- mov rdi, rdi
-
- call _print_integer
+_clear_screen:
 
 
-
- mov rdi, mv_cursor_delimetr
-
- call _puts
-
-
-
- mov rdi, rsi
-
- call _print_integer
-
-
-
- mov rdi, mv_cursor_end
+%line 0+0 ""
+ mov rdi, clr_screen
 
  call _puts
-%line 15+1 src/game.asm
+%line 58+1 ./include/esccontrol.asm
+ ret
+
+%line 6+1 ./include/memory.asm
+_alloc:
+ push rsi
+ push rdx
+
+ mov rax, SYS_MMAP
+ mov rsi, rdi
+ mov rdi, NULL
+ mov rdx, 3
+ mov r10, 0x20
+ mov r8, 0
+ mov r9, 0
+ syscall
+
+ pop rdx
+ pop rsi
+
+ ret
+
+
+
+_free:
+ mov rax, SYS_MUNMAP
+ syscall
+
+ ret
+
+%line 7+1 src/game.asm
+DIRECTION_LEFT equ 0x0000ffff
+DIRECTION_UP equ 0xffff0000
+DIRECTION_RIGHT equ 0x00000001
+DIRECTION_DOWN equ 0x00010000
+
+SNAKE_HEAD_CHAR equ 79
+SNAKE_BODY_CHAR equ 111
+FRUIT_BASE_CHAR equ 64
+
+%line 18+1 src/game.asm
+
 [absolute 0]
-%line 15+0 src/game.asm
-winsize:
-%line 16+1 src/game.asm
- .height: resw 1
- .width: resw 1
-winsize_size equ ($-winsize)
-%line 18+0 src/game.asm
+%line 19+0 src/game.asm
+coordinate_s:
+%line 20+1 src/game.asm
+ .y: resw 1
+ .x: resw 1
+coordinate_s_size equ ($-coordinate_s)
+%line 22+0 src/game.asm
 [section .text]
-%line 19+1 src/game.asm
+%line 23+1 src/game.asm
+
+[absolute 0]
+%line 24+0 src/game.asm
+listnode_s:
+%line 25+1 src/game.asm
+ .coords: resw 2
+ .next: resq 1
+listnode_s_size equ ($-listnode_s)
+%line 27+0 src/game.asm
+[section .text]
+%line 28+1 src/game.asm
+
+[absolute 0]
+%line 29+0 src/game.asm
+snake_s:
+%line 30+1 src/game.asm
+ .head: resq 1
+ .tail: resq 1
+ .size: resd 1
+ .direction: resd 1
+snake_s_size equ ($-snake_s)
+%line 34+0 src/game.asm
+[section .text]
+%line 35+1 src/game.asm
 
 [section .data]
 
- red_color db `\x1B[0;32m`,0
- no_color db `\x1B[0m`,0
+ greenColor db `\x1B[0;32m`,0
+ noColor db `\x1B[0m`,0
 
 
- greetings db `SNAKE GAME!!!\n`,0
- toLineStart db `\r`,0
- toNewLine db `\n`,0
- theHeightIs db `The height is: `,0
- theWidthIs db `The width is: ` ,0
+ sl1 db `SNAKE GAME!\n`,0
+ sl2 db `Allocating listnode failed! Exiting!\n`,0
+ sl3 db `GAME OVER!\nPress :ESC: to quit.\nPress :ENTER: to restart.\n`,0
 
-
- countdown dd 3
  countdownTimespec dq 1,0
 
 
- field:
-..@16.strucstart:
-times (winsize.height-winsize)-($-..@16.strucstart) db 0
-%line 39+0 src/game.asm
+ fieldSize:
+..@26.strucstart:
+times (coordinate_s.y-coordinate_s)-($-..@26.strucstart) db 0
+%line 51+0 src/game.asm
 dw 20
-%line 40+1 src/game.asm
-times (winsize.width-winsize)-($-..@16.strucstart) db 0
-%line 40+0 src/game.asm
+%line 52+1 src/game.asm
+times (coordinate_s.x-coordinate_s)-($-..@26.strucstart) db 0
+%line 52+0 src/game.asm
 dw 70
-%line 41+1 src/game.asm
-times winsize_size-($-..@16.strucstart) db 0
+%line 53+1 src/game.asm
+times coordinate_s_size-($-..@26.strucstart) db 0
 
 
- snakeSize dw 1
- currentDirection db 3
+ snake:
+..@31.strucstart:
+times (snake_s.head-snake_s)-($-..@31.strucstart) db 0
+%line 58+0 src/game.asm
+dq 0
+%line 59+1 src/game.asm
+times (snake_s.tail-snake_s)-($-..@31.strucstart) db 0
+%line 59+0 src/game.asm
+dq 0
+%line 60+1 src/game.asm
+times (snake_s.size-snake_s)-($-..@31.strucstart) db 0
+%line 60+0 src/game.asm
+dd 0
+%line 61+1 src/game.asm
+times (snake_s.direction-snake_s)-($-..@31.strucstart) db 0
+%line 61+0 src/game.asm
+dd 0
+%line 62+1 src/game.asm
+times snake_s_size-($-..@31.strucstart) db 0
 
+ fruitCoords:
+..@38.strucstart:
+times (coordinate_s.y-coordinate_s)-($-..@38.strucstart) db 0
+%line 66+0 src/game.asm
+dw 0
+%line 67+1 src/game.asm
+times (coordinate_s.x-coordinate_s)-($-..@38.strucstart) db 0
+%line 67+0 src/game.asm
+dw 0
+%line 68+1 src/game.asm
+times coordinate_s_size-($-..@38.strucstart) db 0
+
+ gameIsOver dq 0
+ gameSpeedTimespec dq 0, 500000000
 
 
 [section .text]
@@ -545,8 +832,14 @@ times winsize_size-($-..@16.strucstart) db 0
 _start:
 %line 0+0 ""
  call _main
-%line 54+1 src/game.asm
+
+
+
  mov rdi, rax
+
+ call _exit
+%line 82+1 src/game.asm
+_exit:
  mov rax, SYS_EXIT
  syscall
 
@@ -558,67 +851,10 @@ _main:
 
 %line 0+0 ""
  call _init_winsize
-%line 65+1 src/game.asm
- mv rdi, 0
- mv di, [field + winsize.width]
- sub rdi, 10
- mv rsi, 0
- mv si, [field + winsize.height]
- sub rsi, 10
-%line 0+0 ""
- call _move_cursor
-
-
-%line 0+0 ""
- mov rdi, red_color
-
- call _puts
-
-
-
- mov rdi, greetings
-
- call _puts
-
-
-
- mov rdi, no_color
-
- call _puts
-%line 78+1 src/game.asm
- mov rcx, 3
- push QWORD rcx
-
- .countdown_loop:
-
-
-%line 0+0 ""
- mov rdi, [rbp - 8]
-
- call _print_integer
-
-
-
- mov rdi, toLineStart
-
- call _puts
-
-
-
- mov rdi, countdownTimespec
-
- call _sleep
-%line 85+1 src/game.asm
- mov rcx, [rbp - 8]
- dec rcx
- mov [rbp - 8], rcx
- test rcx, rcx
- jnz .countdown_loop
-
- pop rcx
-
-
-
+ call _greet
+ call _init_snake
+ call _start_game
+%line 97+1 src/game.asm
  mov rax, 0
 
  mov rsp, rbp
@@ -630,5 +866,370 @@ _init_winsize:
  mov rax, SYS_IOCTL
  mov rdi, STDOUT
  mov rsi, 0x5413
- mov rdx, field
+ mov rdx, fieldSize
  syscall
+ ret
+
+
+_greet:
+ push rbp
+ mov rbp, rsp
+
+%line 0+0 ""
+ call _clear_screen
+%line 118+1 src/game.asm
+ mov rbx, fieldSize
+ sub rsp, 0x18
+
+ mov rax, 0
+ mov ax, WORD [rbx + coordinate_s.x]
+ mov rdx, 0
+ mov rcx, 2
+ div rcx
+ mov [rbp - 0x8], rax
+ mov rdi, rax
+ sub rdi, 6
+
+ mov rax, 0
+ mov ax, WORD [rbx + coordinate_s.y]
+ mov rdx, 0
+ div rcx
+ mov [rbp - 0x10], rax
+ mov rsi, rax
+%line 0+0 ""
+ call _move_cursor
+
+
+%line 0+0 ""
+ mov rdi, greenColor
+
+ call _puts
+
+
+
+ mov rdi, sl1
+
+ call _puts
+
+
+
+ mov rdi, noColor
+
+ call _puts
+%line 143+1 src/game.asm
+ mov rdi, [rbp - 0x8]
+ sub rdi, 1
+ mov rsi, [rbp - 0x10]
+ inc rsi
+%line 0+0 ""
+ call _move_cursor
+%line 149+1 src/game.asm
+ mov QWORD [rbp - 0x18], 3
+
+ .countdown_loop:
+
+
+%line 0+0 ""
+ mov rdi, [rbp - 0x18]
+
+ call _print_integer
+
+
+
+ mov rdi, 8
+
+ call _putc
+
+
+
+ mov rdi, countdownTimespec
+
+ call _sleep
+%line 155+1 src/game.asm
+ dec QWORD [rbp - 0x18]
+ cmp QWORD [rbp - 0x18], 0
+ jg .countdown_loop
+
+ add rsp, 0x18
+
+ mov rsp, rbp
+ pop rbp
+ ret
+
+
+_start_game:
+%line 0+0 ""
+ call _clear_screen
+%line 169+1 src/game.asm
+ .game_loop:
+
+
+%line 0+0 ""
+ mov rdi, gameSpeedTimespec
+
+ call _sleep
+ call _move_snake
+ call _handle_collision
+%line 174+1 src/game.asm
+ mov rax, QWORD [gameIsOver]
+ test rax, rax
+ jz .game_loop
+
+ ret
+
+
+_end_game:
+%line 0+0 ""
+ call _clear_screen
+
+
+
+ mov rdi, sl3
+
+ call _puts
+%line 184+1 src/game.asm
+ ret
+
+
+_init_snake:
+ push rax
+
+
+
+%line 0+0 ""
+ mov rdi, 5
+
+
+
+
+ mov rsi, 5
+
+
+
+
+ mov rdx, 0
+
+ call _get_list_node
+%line 191+1 src/game.asm
+ mov QWORD [snake + snake_s.tail], rax
+
+
+%line 0+0 ""
+ mov rdi, 6
+
+
+
+
+ mov rsi, 5
+
+
+
+
+ mov rdx, rax
+
+ call _get_list_node
+%line 193+1 src/game.asm
+ mov QWORD [snake + snake_s.head], rax
+ mov DWORD [snake + snake_s.size], 2
+ mov DWORD [snake + snake_s.direction], DIRECTION_LEFT
+
+ pop rax
+ ret
+
+
+_get_list_node:
+ push rdi
+
+
+%line 0+0 ""
+ mov rdi, 12
+
+ call _alloc
+%line 204+1 src/game.asm
+ pop rdi
+ cmp rax, -1
+ jne .noerror
+
+
+%line 0+0 ""
+ mov rdi, sl2
+
+ call _puts
+
+
+
+ mov rdi, 12
+
+ call _exit
+%line 210+1 src/game.asm
+ .noerror:
+
+ mov WORD [rax + coordinate_s.y], si
+ mov WORD [rax + coordinate_s.x], di
+ mov QWORD [rax + listnode_s.next], rdx
+
+ ret
+
+
+_inc_snake:
+ push rax
+ push rdi
+ push rsi
+ push rdx
+
+ mov rdx, QWORD [snake + snake_s.head]
+ mov rdi, 0
+ mov di, WORD [rdx + coordinate_s.x]
+ mov rsi, 0
+ mov si, WORD [rdx + coordinate_s.y]
+%line 0+0 ""
+ call _get_list_node
+%line 232+1 src/game.asm
+ mov QWORD [snake + snake_s.head], rax
+
+ mov eax, DWORD [snake + snake_s.size]
+ inc eax
+ mov DWORD [snake + snake_s.size], eax
+
+ pop rdx
+ pop rsi
+ pop rdi
+ pop rax
+ ret
+
+
+_move_snake:
+ push rax
+ push rdi
+ push rsi
+ push rdx
+ push rbx
+
+ mov rdx, snake
+
+ add rdx, 0x8
+ mov rax, QWORD [rdx]
+
+ mov QWORD [rdx], QWORD [rax + listnode_s.next]
+ mov QWORD [rax + listnode_s.next], 0
+
+
+ mov rdi, 0
+ mov di, WORD [rax + coordinate_s.x]
+ mov rsi, 0
+ mov si, WORD [rax + coordinate_s.y]
+%line 0+0 ""
+ call _move_cursor
+
+
+
+ mov rdi, 32
+
+ call _putc
+%line 269+1 src/game.asm
+ add rdx, 0x8
+ mov rbx, [rdx]
+
+
+ mov di, WORD [rbx + coordinate_s.x]
+ mov si, WORD [rbx + coordinate_s.y]
+
+
+%line 0+0 ""
+ mov rdi, SNAKE_BODY_CHAR
+
+ call _putc
+%line 278+1 src/game.asm
+ mov QWORD [rbx + listnode_s.next], rax
+ mov QWORD [rdx], rax
+
+ mov rdx, rax
+%line 0+0 ""
+ call _calculate_move
+%line 283+1 src/game.asm
+ mov DWORD [rdx + listnode_s.coords], eax
+
+
+ mov di, WORD [rdx + coordinate_s.x]
+ mov si, WORD [rdx + coordinate_s.y]
+
+
+%line 0+0 ""
+ mov rdi, SNAKE_HEAD_CHAR
+
+ call _putc
+%line 291+1 src/game.asm
+ pop rbx
+ pop rdx
+ pop rsi
+ pop rdi
+ pop rax
+ ret
+
+
+
+_calculate_move:
+ push rax
+ push rdi
+ push rdx
+
+ mov rdi, QWORD [snake + snake_s.tail]
+ mov eax, DWORD [rdi + listnode_s.coords]
+ mov edx, DWORD [snake + snake_s.direction]
+
+ add ax, dx
+ xor dx, dx
+ add eax, edx
+
+ pop rdx
+ pop rdi
+ pop rax
+ ret
+
+
+_handle_collision:
+ mov rax, [snake + snake_s.tail]
+ mov dx, [rax + coordinate_s.x]
+ cmp dx, 0
+ jl .bumped
+ cmp dx, WORD [fieldSize + coordinate_s.x]
+ jg .bumped
+
+ cmp dx, WORD [fruitCoords + coordinate_s.x]
+
+
+
+
+
+ mov dx, [rax + coordinate_s.y]
+ cmp dx, 0
+ jl .bumped
+ cmp dx, WORD [fieldSize + coordinate_s.y]
+ jg .bumped
+
+ cmp dx, WORD [fruitCoords + coordinate_s.y]
+ mov rd
+
+
+ ret
+
+ .ate_fuit:
+%line 0+0 ""
+ call _update_fruit
+ call _inc_snake
+%line 348+1 src/game.asm
+ ret
+
+ .bumped:
+ mov QWORD [gameIsOver], 1
+ ret
+
+
+_init_fruit:
+
+ ret
+
+
+_update_fruit:
+
+ ret

@@ -5,6 +5,7 @@ section .text
 
 ; strnlen(char *string, long size) -> long
 _strnlen:
+  push rcx
   mov rcx, 0
   mov rax, 0
 
@@ -19,10 +20,18 @@ _strnlen:
 
   .endwhile:
   mov rax, rcx
+  pop rcx
   ret
 
 ; int_to_str(long val, char *buf) -> long
+; returns length of new string
 _int_to_str:
+  push rbp
+  push rdx
+  push rcx
+  push rbx
+  mov rbp, rsp
+  sub rsp, 0x18
   
   mov rax, rdi
   mov rdi, rsi
@@ -33,13 +42,29 @@ _int_to_str:
     mov rdx, 0
     div rsi
     add rdx, '0'
-    mov BYTE [rdi + rcx], dl
+    mov rbx, rbp
+    sub rbx, rcx
+    mov BYTE [rbx], dl
     inc rcx
 
     test rax, rax
     jnz .while
 
+  push rdi
+  push rsi
+  callproc memcpy, P(rdi), P(rbx), I(rcx)
+  pop rsi
+  pop rdi
+  mov BYTE [rdi + rcx], 0
+
   mov rax, rcx
+
+  add rsp, 0x18
+  mov rsp, rbp
+  pop rbx
+  pop rcx
+  pop rdx
+  pop rbp
   ret
   
 ; memcpy(char *dst, char *src, long nChars) -> void

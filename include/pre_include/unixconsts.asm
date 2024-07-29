@@ -1,3 +1,5 @@
+NULL equ 0
+
 STDIN_FILENO    equ 0
 STDOUT_FILENO   equ 1
 STDERR_FILENO   equ 2

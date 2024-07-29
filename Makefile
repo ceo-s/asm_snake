@@ -9,7 +9,7 @@ TARGET = $(BINDIR)/main
 INCPATHS = include
 INC = $(patsubst %, -i./%, $(INCPATHS))
 
-OPTIONS = -f elf64 -p include/pre_include/unixconsts.asm -p include/pre_include/stdcall.asm
+OPTIONS = -f elf64 -p include/pre_include/unixconsts.asm -p include/pre_include/sysvabicall.asm
 PROD_OPTIONS =  $(OPTIONS)
 DEBUG_OPTIONS = $(OPTIONS) -g
 

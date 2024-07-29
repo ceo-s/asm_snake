@@ -16,38 +16,41 @@ section .data
 
 section .text
 
-; move_cursor(int x, int y)
+; move_cursor(int x, int y) -> void
 _move_cursor:
   push rbp
-  mov rbp, rsp
   push rax
+  push rcx
   push rdx
+  mov rbp, rsp
   push rdi
   push rsi
-  mov rdx, mv_buf
+  mov rcx, mv_buf
 
-  callproc memcpy, P(rdx), P(mv_cursor_begin), I(2)
+  callproc memcpy, P(rcx), P(mv_cursor_begin), I(2)
 
-  add rdx, 2
-  callproc int_to_str, I([rsp + 0x10]), P(mv_ints_buf)
-  callproc memcpy, P(rdx), P(mv_ints_buf), I(rax)
-  add rdx, rax
+  add rcx, 2
+  callproc int_to_str, I([rbp - 0x10]), P(mv_ints_buf)
+  callproc memcpy, P(rcx), P(mv_ints_buf), I(rax)
+  add rcx, rax
   mov al, BYTE [mv_cursor_delimetr]
-  mov BYTE [rdx], al
-  inc rdx
-  callproc int_to_str, I([rsp + 0x8]), P(mv_ints_buf)
-  callproc memcpy, P(rdx), P(mv_ints_buf), I(rax)
-  add rdx, rax
+  mov BYTE [rcx], al
+  inc rcx
+  callproc int_to_str, I([rbp - 0x8]), P(mv_ints_buf)
+  callproc memcpy, P(rcx), P(mv_ints_buf), I(rax)
+  add rcx, rax
   mov al, BYTE [mv_cursor_end]
-  mov BYTE [rdx], al
-  inc rdx
-  mov BYTE [rdx], 0
+  mov BYTE [rcx], al
+  inc rcx
+  mov BYTE [rcx], 0
 
-  pop rsi
-  pop rdi
-  pop rdx
-  pop rax
+  callproc puts, P(mv_buf)
+  
+  sub rsp, 0x10
   mov rsp, rbp
+  pop rdx
+  pop rcx
+  pop rax
   pop rbp
   ret
 

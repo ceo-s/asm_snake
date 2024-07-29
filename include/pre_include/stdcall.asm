@@ -5,6 +5,7 @@
     %rotate 1
     push %1
   %endrep
-
+  
+  call procaddr
   %undef procaddr
 %endmacro

@@ -4,14 +4,39 @@
 
 section .text
 
+; putc(char ch) -> void
+_putc:
+  push rax
+  push rsi
+  push rdx
+
+  push rdi
+
+  mov rax, SYS_WRITE
+  mov rsi, rsp
+  mov rdi, STDOUT
+  mov rdx, 1
+  syscall
+
+  pop rdi
+
+  pop rdx
+  pop rsi
+  pop rax
+  ret
+
 ; puts(char *string) -> void
 _puts:
+  push rax
+  push rsi
   callproc strnlen, P(rdi), I(10000)
   mov rdx, rax
   mov rax, SYS_WRITE
   mov rsi, rdi
   mov rdi, STDOUT
   syscall
+  pop rsi
+  pop rax
   ret
 
 ; print_integer(long val) -> void
