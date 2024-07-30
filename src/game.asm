@@ -1,7 +1,7 @@
 %include "io.asm"
 %include "ansicodes.asm"
 %include "sleep.asm"
-%include "esccontrol.asm"
+%include "termcontrol.asm"
 %include "memory.asm"
 
 ; mov loads struc coordinate_s in Little Endian, so directions are like this
@@ -69,7 +69,7 @@ section .data
     iend
 
   gameIsOver dq 0
-  gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(500)
+  gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(250)
   ; Outro
 
 section .text
@@ -81,6 +81,7 @@ _start:
 
 ; exit(int exitcode) -> noreturn
 _exit:
+  callproc end_game
   mov rax, SYS_EXIT
   syscall
 
@@ -91,6 +92,11 @@ _main:
   mov rbp, rsp
 
   callproc init_winsize
+  callproc hide_cursor
+  callproc init_termios
+  callproc enable_raw_mode
+
+
   callproc greet
   callproc init_snake
   callproc start_game
@@ -169,6 +175,7 @@ _start_game:
 
   .game_loop:
     callproc sleep, P(gameSpeedTimespec)
+    callproc read_input
     callproc move_snake
     ; callproc handle_collision
 
@@ -182,6 +189,8 @@ _start_game:
 _end_game:
   callproc clear_screen
   callproc puts, P(sl3)
+  callproc show_cursor
+  callproc disable_raw_mode
   ret
 
 ; init_snake() -> void
@@ -365,4 +374,74 @@ _init_fruit:
 ; update_fruit() -> void
 _update_fruit:
   
+  ret
+
+; read_input() -> void
+_read_input:
+  push rax
+  push rdi
+  push rsi
+  push rdx
+
+  push rbp
+  mov rbp, rsp
+  sub rsp, 8
+  mov QWORD [rsp], 0
+
+  .while: ; rax != 0
+    mov rax, SYS_READ
+    mov rdi, STDIN
+    mov rsi, rsp
+    mov rdx, 1
+    syscall
+    test rax, rax
+    jnz .while
+
+  mov rax, 0
+  mov al, BYTE [rsp]
+
+  .if:
+  .isw:
+    cmp al, 'w'
+    jne .isa
+    mov rdx, DIRECTION_UP
+    jmp .endif
+
+  .isa:
+    cmp al, 'a'
+    jne .iss
+    mov rdx, DIRECTION_LEFT
+    jmp .endif
+  
+  .iss:
+    cmp al, 's'
+    jne .isd
+    mov rdx, DIRECTION_DOWN
+    jmp .endif
+  
+  .isd:
+    cmp al, 'd'
+    jne .else
+    mov rdx, DIRECTION_RIGHT
+    jmp .endif
+
+  .else:
+    mov rdx, 0  
+
+  .endif:
+
+  cmp rdx, 0
+  je .procend
+
+  mov DWORD [snake + snake_s.direction], edx
+
+  .procend:
+
+  mov rsp, rbp
+  pop rbp
+
+  pop rdx
+  pop rsi
+  pop rdi
+  pop rax
   ret

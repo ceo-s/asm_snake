@@ -3,6 +3,8 @@
 
 ; Actions
 %define ANSI_MOVE_CURSOR  `\033[%d;%dH`
+%define ANSI_HIDE_CURSOR  `\033[?25l`
+%define ANSI_SHOW_CURSOR  `\033[?25h`
 %define ANSI_CLEAR_SCREEN `\x1B[2J`
 
 ; Colors
