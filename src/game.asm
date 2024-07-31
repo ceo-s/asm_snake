@@ -405,24 +405,32 @@ _read_input:
     cmp al, 'w'
     jne .isa
     mov rdx, DIRECTION_UP
+    cmp DWORD [snake + snake_s.direction], DIRECTION_DOWN
+    je .procend
     jmp .endif
 
   .isa:
     cmp al, 'a'
     jne .iss
     mov rdx, DIRECTION_LEFT
+    cmp DWORD [snake + snake_s.direction], DIRECTION_RIGHT
+    je .procend
     jmp .endif
   
   .iss:
     cmp al, 's'
     jne .isd
     mov rdx, DIRECTION_DOWN
+    cmp DWORD [snake + snake_s.direction], DIRECTION_UP
+    je .procend
     jmp .endif
   
   .isd:
     cmp al, 'd'
     jne .else
     mov rdx, DIRECTION_RIGHT
+    cmp DWORD [snake + snake_s.direction], DIRECTION_LEFT
+    je .procend
     jmp .endif
 
   .else:
