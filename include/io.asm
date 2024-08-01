@@ -9,6 +9,7 @@ _putc:
   push rax
   push rsi
   push rdx
+  push rcx
 
   push rdi
 
@@ -20,6 +21,7 @@ _putc:
 
   pop rdi
 
+  pop rcx
   pop rdx
   pop rsi
   pop rax
@@ -28,6 +30,7 @@ _putc:
 ; puts(char *string) -> void
 _puts:
   push rax
+  push rdi
   push rsi
   callproc strnlen, P(rdi), I(10000)
   mov rdx, rax
@@ -36,6 +39,7 @@ _puts:
   mov rdi, STDOUT
   syscall
   pop rsi
+  pop rdi
   pop rax
   ret
 

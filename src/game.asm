@@ -40,9 +40,16 @@ section .data
   noColor  db ANSI_TEXT_COLOR_NORMAL
 
   ; String literals
-  sl1 db `SNAKE GAME!\n`,0
+  sl1 db `SNAKE GAME`,0
   sl2 db `Allocating listnode failed! Exiting!\n`,0
   sl3 db `GAME OVER!\nPress :ESC: to quit.\nPress :ENTER: to restart.\n`,0
+  sl4 db `SCORE: `,0
+  sl5 db `Record: 0`,0
+  sl6 db `Start game`,0
+  sl7 db `Difficulty: [###--]`,0
+  sl8 db `Exit`,0
+  sl9 db `=>`,0
+
   ; Intro
   countdownTimespec dq 1,0
 
@@ -70,6 +77,7 @@ section .data
 
   gameIsOver dq 0
   gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(250)
+  gameDifficulty dq 3
   ; Outro
 
 section .text
@@ -96,9 +104,10 @@ _main:
   callproc init_termios
   callproc enable_raw_mode
 
-
-  callproc greet
+  callproc clear_screen
   callproc init_snake
+  callproc enter_main_menu
+  callproc greet
   callproc start_game
 
   mov rax, 0
@@ -172,6 +181,7 @@ _greet:
 ; start_game() -> void
 _start_game:
   callproc clear_screen
+  callproc render_score
 
   .game_loop:
     callproc sleep, P(gameSpeedTimespec)
@@ -452,4 +462,246 @@ _read_input:
   pop rsi
   pop rdi
   pop rax
+  ret
+
+; render_score() -> void
+_render_score:
+  push rax
+  push rdi
+  push rsi
+  push rdx
+  push rcx
+
+  mov rax, 0
+  mov ax, WORD [fieldSize + coordinate_s.x]
+  mov rdx, 0
+  mov rdi, 2
+  div rdi
+
+
+  sub rax, 4
+  mov rdi, rax
+  
+  callproc move_cursor, I(rax), I(1)
+  callproc puts, P(sl4)
+  mov edi, DWORD [snake + snake_s.size]
+  sub rdi, 2
+  callproc print_integer
+  callproc move_cursor, I(1), I(2)
+
+  mov rcx, 0
+  mov cx, WORD [fieldSize + coordinate_s.x]
+
+  .while: ; rcx >= 0
+    callproc putc, I(`_`)
+    dec rcx
+    test rcx, rcx
+    jnz .while
+
+  pop rcx
+  pop rdx
+  pop rsi
+  pop rdi
+  pop rax
+  ret
+
+; enter_main_menu() -> void
+_enter_main_menu:
+  ; 1     SNAKE GAME
+  ; 2     Record: 0
+  ; 3   
+  ; 4     Start game          = option 0
+  ; 5 Difficulty: [-----]     = option 1
+  ; 6        Exit             = option 2
+
+  push rbp
+  mov rbp, rsp
+  ; rbp - 0x8  = fieldSize.x / 2
+  ; rbp - 0x10 = fieldSize.y / 2
+  ; rbp - 0x18 = current menu option
+  ; rbp - 0x20 = previous menu option
+  ; rbp - 0x28 = input read buffer
+
+  mov rax, 0
+  mov ax, WORD [fieldSize + coordinate_s.x]
+  mov rdx, 0
+  mov rdi, 2
+  div rdi
+  push rax
+
+  mov ax, WORD [fieldSize + coordinate_s.y]
+  mov rdx, 0
+  div rdi
+  push rax
+
+  push 0
+  push 0
+  push 1488
+
+  ; 1
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 5
+  mov rsi, QWORD [rbp - 0x10]
+  sub rsi, 2
+  callproc move_cursor
+  callproc puts, P(sl1)
+
+  ; 2
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 5
+  mov rsi, QWORD [rbp - 0x10]
+  sub rsi, 1
+  callproc move_cursor
+  callproc puts, P(sl5)
+
+  ; 4
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 5
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 1
+  callproc move_cursor
+  callproc puts, P(sl6)
+
+  ; 5
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 9
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 2
+  callproc move_cursor
+  callproc puts, P(sl7)
+
+
+  ; 6
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 2
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 3
+  callproc move_cursor
+  callproc puts, P(sl8)
+
+  .unhighlight_previous_option:
+    mov rdi, QWORD [rbp - 0x8]
+    sub rdi, 12
+    mov rsi, QWORD [rbp - 0x10]
+    add rsi, QWORD [rbp - 0x20]
+    inc rsi
+    callproc move_cursor
+    callproc putc, I(` `)
+    callproc putc, I(` `)
+    mov rdi, QWORD [rbp - 0x18]
+    mov QWORD [rbp - 0x20], rdi
+
+  .highlight_current_option:
+    mov rdi, QWORD [rbp - 0x8]
+    sub rdi, 12
+    mov rsi, QWORD [rbp - 0x10]
+    add rsi, QWORD [rbp - 0x18]
+    inc rsi
+    callproc move_cursor
+    callproc puts, P(sl9)
+
+
+  .handle_input:
+    .while: ; rax == 0
+      mov rax, SYS_READ
+      mov rdi, STDIN
+      mov rsi, rbp
+      sub rsi, 0x28
+      mov rdx, 1
+      syscall
+      test rax, rax
+      jz .while
+    
+    mov rax, 0
+    mov al, [rbp - 0x28]
+    
+    .if_enter:
+      cmp al, 10
+      jne .if_up
+      .if_option_is_start:
+        cmp QWORD [rbp - 0x18], 0
+        je .menu_end
+
+      .if_option_is_exit:
+        cmp QWORD [rbp - 0x18], 2
+        je _exit
+
+      jmp .handle_input
+    
+    .if_up:
+      cmp al, `w`
+      jne .if_down
+      dec QWORD [rbp - 0x18]
+      cmp QWORD [rbp - 0x18], 0
+      jnl .unhighlight_previous_option
+      inc QWORD [rbp - 0x18]
+
+      jmp .unhighlight_previous_option
+
+    .if_down:
+      cmp al, `s`
+      jne .if_option_is_difficulty
+      inc QWORD [rbp - 0x18]
+      cmp QWORD [rbp - 0x18], 2
+      jng .unhighlight_previous_option
+      dec QWORD [rbp - 0x18]
+
+      jmp .unhighlight_previous_option
+
+    .if_option_is_difficulty:
+      cmp QWORD [rbp - 0x18], 1
+      jne .handle_input
+
+      .if_right:
+        cmp al, `d`
+        jne .if_left
+        cmp QWORD [gameDifficulty], 5
+        je .render_difficulty
+        inc QWORD [gameDifficulty]
+
+        jmp .render_difficulty
+        
+      .if_left:
+        cmp al, `a`
+        jne .handle_input
+        cmp QWORD [gameDifficulty], 1
+        je .render_difficulty
+        dec QWORD [gameDifficulty]
+
+        jmp .render_difficulty
+
+      jmp .handle_input
+
+  .render_difficulty:
+    mov rdi, QWORD [rbp - 0x8]
+    add rdi, 3
+    mov rsi, QWORD [rbp - 0x10]
+    add rsi, 2
+    callproc move_cursor
+    callproc putc, I(`[`)
+    mov rcx, QWORD [gameDifficulty]
+
+    .for: ; rcx > 0
+      callproc putc, I(`#`)
+      dec rcx
+      test rcx, rcx
+      jnz .for
+    
+    mov rcx, 5
+    sub rcx, QWORD [gameDifficulty]
+    .for2:
+      test rcx, rcx
+      je .for2end
+      callproc putc, I(`-`)
+      dec rcx
+      jmp .for2
+    .for2end:
+
+    callproc putc, I(`]`)
+    jmp .handle_input
+
+  .menu_end:
+
+  mov rsp, rbp
+  pop rbp
   ret
