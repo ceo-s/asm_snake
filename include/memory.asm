@@ -24,8 +24,14 @@ _alloc:
 ; free(void *ptr, long size) -> int
 ; return 0 on success and -1 on failure
 _free:
+  push rdi
+  push rsi
+
   mov rax, SYS_MUNMAP
   syscall
+
+  pop rsi
+  pop rdi
 
   ret
 
