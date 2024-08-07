@@ -3,6 +3,7 @@
 %include "sleep.asm"
 %include "termcontrol.asm"
 %include "memory.asm"
+%include "random.asm"
 
 ; mov loads struc coordinate_s in Little Endian, so directions are like this
 DIRECTION_UP    equ 0x0000ffff ; x + 0 , y - 1
@@ -39,13 +40,14 @@ section .bss
 
 section .data
   ; ANSI strings
-  greenColor db ANSI_TEXT_COLOR_GREEN
+  redColor db ANSI_TEXT_COLOR_BOLD_RED
   noColor  db ANSI_TEXT_COLOR_NORMAL
 
   ; String literals
-  sl1 db `SNAKE GAME`,0
+  sl0 db `SNAKE GAME`,0
+  sl1 db `BE READY!`,0
   sl2 db `Allocating listnode failed! Exiting!\n`,0
-  sl3 db `GAME OVER!\nPress :ESC: to quit.\nPress :ENTER: to restart.\n`,0
+  sl3 db `GAME OVER`,0
   sl4 db `SCORE: `,0
   sl5 db `Record: 0`,0
   sl6 db `Start game`,0
@@ -56,6 +58,7 @@ section .data
   sl11 db `Continue game`,0
   sl12 db `Exit to main menu`,0
   sl13 db `Exit game`,0
+  sl14 db `Restart`,0
 
   ; Intro
   countdownTimespec dq 1,0
@@ -82,8 +85,7 @@ section .data
       at coordinate_s.x, dw 0
     iend
 
-  gameIsOver dq 0
-  gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(250)
+  gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(31)
   gameDifficulty dq 3
   ; Outro
 
@@ -91,12 +93,15 @@ section .text
   global _start
 
 _start:
+  callproc set_time_based_srand
   callproc main
   callproc exit, I(rax)
 
 ; exit(int exitcode) -> noreturn
 _exit:
-  callproc end_game
+  callproc clear_screen
+  callproc move_cursor, I(0), I(0)
+  callproc disable_raw_mode
   mov rax, SYS_EXIT
   syscall
 
@@ -116,8 +121,10 @@ _main:
   .game_start:
   mov rbp, QWORD [mainBasePointer]
   callproc clear_screen
-  callproc init_snake
   callproc enter_main_menu
+  .game_restart:
+  callproc init_snake
+  callproc generate_fruit
   callproc greet
   callproc start_game
 
@@ -152,7 +159,7 @@ _greet:
   div rcx
   mov [rbp - 0x8], rax
   mov rdi, rax
-  sub rdi, 6
+  sub rdi, 5
 
   mov rax, 0
   mov ax, WORD [rbx + coordinate_s.y]
@@ -163,7 +170,7 @@ _greet:
   callproc move_cursor
 
 
-  callproc puts, P(greenColor)
+  callproc puts, P(redColor)
   callproc puts, P(sl1)
   callproc puts, P(noColor)
 
@@ -193,25 +200,25 @@ _greet:
 _start_game:
   callproc clear_screen
   callproc render_score
+  callproc render_fruit
+
+  push 0
+  push 0
+  mov rax, QWORD [gameSpeedTimespec + 0x8]
+  mov rcx, QWORD [gameDifficulty]
+  shl rax, cl
+  mov QWORD [rsp + 0x8], rax
 
   .game_loop:
-    callproc sleep, P(gameSpeedTimespec)
+    callproc sleep, P(rsp)
     callproc read_input
     callproc move_snake
-    ; callproc handle_collision
+    callproc handle_collision
 
-    mov rax, QWORD [gameIsOver]
-    test rax, rax
-    jz .game_loop
+    jmp .game_loop
 
-  ret
+  add rsp, 0x10
 
-; end_game() -> void
-_end_game:
-  callproc clear_screen
-  callproc puts, P(sl3)
-  callproc show_cursor
-  callproc disable_raw_mode
   ret
 
 ; init_snake() -> void
@@ -354,47 +361,113 @@ _calculate_move:
 
 ; handle_collision()
 _handle_collision:
-  mov rax, [snake + snake_s.tail]
-  mov dx, [rax + coordinate_s.x]
-  cmp dx, 0
-  jl .bumped
-  cmp dx, WORD [fieldSize + coordinate_s.x]
-  jg .bumped
+  push rax
+  push rdi
+  push rsi
 
-  cmp dx, WORD [fruitCoords + coordinate_s.x]
+  mov rax, QWORD [snake + snake_s.tail]
 
-  ; TODO bruh i ended here. Want to handle fruit collision
-  ; Update. I'll handle it after render mechanism
-  
+  mov rdi, 0
+  mov di, WORD [rax + coordinate_s.x]
+  dec di
+  cmp di, WORD [fieldSize + coordinate_s.x]
+  jge .bumped
+  inc di
+  cmp di, 0
+  jle .bumped
 
-  mov dx, [rax + coordinate_s.y]
-  cmp dx, 0
-  jl .bumped
-  cmp dx, WORD [fieldSize + coordinate_s.y]
-  jg .bumped
+  mov rsi, 0
+  mov si, WORD [rax + coordinate_s.y]
+  dec si
+  cmp si, WORD [fieldSize + coordinate_s.y]
+  jge .bumped
+  inc si
+  cmp si, 2
+  jle .bumped
 
-  cmp dx, WORD [fruitCoords + coordinate_s.y]
+  cmp di, WORD [fruitCoords + coordinate_s.x]
+  jne .initfor
+  cmp si, WORD [fruitCoords + coordinate_s.y]
+  je .ate_fruit
 
 
-  ret
+  .initfor:
+  mov rax, QWORD [snake + snake_s.tail]
+  mov edi, DWORD [rax]
+  mov rax, QWORD [snake + snake_s.head]
 
-  .ate_fuit:
-  callproc update_fruit
-  callproc inc_snake
-  ret
+
+  .for:
+    cmp rax, QWORD [snake + snake_s.tail]
+    je .forend
+    mov esi, DWORD [rax]
+    cmp edi, esi
+    je .bumped
+    mov rax, QWORD [rax + listnode_s.next]
+    jmp .for
+
+  .forend:
+
+  jmp .procend
 
   .bumped:
-  mov QWORD [gameIsOver], 1
-  ret
+    callproc enter_game_over_menu
 
-; init_fruit() -> void
-_init_fruit:
+  .ate_fruit:
+    callproc inc_snake
+    callproc render_score
+    callproc generate_fruit
+    callproc render_fruit
 
-  ret
-
-; update_fruit() -> void
-_update_fruit:
+  .procend:
   
+  pop rsi
+  pop rdi
+  pop rax
+
+  ret
+
+; generate_fruit() -> void
+_generate_fruit:
+  push rax
+  push rdi
+  push rsi
+
+  mov rdi, 0
+  mov rsi, 0
+  mov si, WORD [fieldSize + coordinate_s.x]
+  inc si
+  callproc randint
+  mov WORD [fruitCoords + coordinate_s.x], ax
+
+  mov rdi, 3
+  mov rsi, 0
+  mov si, WORD [fieldSize + coordinate_s.y]
+  inc si
+  callproc randint
+  mov WORD [fruitCoords + coordinate_s.y], ax
+
+  pop rsi
+  pop rdi
+  pop rax
+  
+  ret
+
+; render_fruit() -> void
+_render_fruit:
+  push rdi
+  push rsi
+
+  mov rdi, 0
+  mov di, WORD [fruitCoords + coordinate_s.x]
+  mov rsi, 0
+  mov si, WORD [fruitCoords + coordinate_s.y]
+  callproc move_cursor
+  callproc putc, I(FRUIT_BASE_CHAR)
+
+  pop rsi
+  pop rdi
+
   ret
 
 ; read_input() -> void
@@ -563,7 +636,7 @@ _enter_main_menu:
   mov rsi, QWORD [rbp - 0x10]
   sub rsi, 2
   callproc move_cursor
-  callproc puts, P(sl1)
+  callproc puts, P(sl0)
 
   ; 2
   mov rdi, QWORD [rbp - 0x8]
@@ -619,6 +692,7 @@ _enter_main_menu:
     callproc move_cursor
     callproc puts, P(sl9)
 
+  jmp .render_difficulty
 
   .handle_input:
     .while: ; rax == 0
@@ -765,7 +839,7 @@ _enter_pause_menu:
   callproc move_cursor
   callproc puts, P(sl10)
 
-  ; 2
+  ; 3
   mov rdi, QWORD [rbp - 0x8]
   sub rdi, 7
   mov rsi, QWORD [rbp - 0x10]
@@ -873,13 +947,152 @@ _enter_pause_menu:
 
 ; enter_game_over_menu() -> void
 _enter_game_over_menu:
+  ; 1     GAME OVER
+  ; 2   
+  ; 3      Restart       = option 0
+  ; 4 Exit to main menu  = option 1
+  ; 5     Exit game      = option 2
+  callproc clear_screen
+  push rbp
+  mov rbp, rsp
+  ; rbp - 0x8  = fieldSize.x / 2
+  ; rbp - 0x10 = fieldSize.y / 2
+  ; rbp - 0x18 = current menu option
+  ; rbp - 0x20 = previous menu option
+  ; rbp - 0x28 = input read buffer
+
+  mov rax, 0
+  mov ax, WORD [fieldSize + coordinate_s.x]
+  mov rdx, 0
+  mov rdi, 2
+  div rdi
+  push rax
+
+  mov ax, WORD [fieldSize + coordinate_s.y]
+  mov rdx, 0
+  div rdi
+  push rax
+
+  push 0
+  push 0
+  push 1488
+
+  ; 1
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 5
+  mov rsi, QWORD [rbp - 0x10]
+  sub rsi, 1
+  callproc move_cursor
+  callproc puts, P(sl3)
+
+  ; 3
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 4
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 1
+  callproc move_cursor
+  callproc puts, P(sl14)
+
+  ; 4
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 9
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 2
+  callproc move_cursor
+  callproc puts, P(sl12)
+
+  ; 5
+  mov rdi, QWORD [rbp - 0x8]
+  sub rdi, 5
+  mov rsi, QWORD [rbp - 0x10]
+  add rsi, 3
+  callproc move_cursor
+  callproc puts, P(sl13)
+
+  .unhighlight_previous_option:
+    mov rdi, QWORD [rbp - 0x8]
+    sub rdi, 12
+    mov rsi, QWORD [rbp - 0x10]
+    add rsi, QWORD [rbp - 0x20]
+    inc rsi
+    callproc move_cursor
+    callproc putc, I(` `)
+    callproc putc, I(` `)
+    mov rdi, QWORD [rbp - 0x18]
+    mov QWORD [rbp - 0x20], rdi
+
+  .highlight_current_option:
+    mov rdi, QWORD [rbp - 0x8]
+    sub rdi, 12
+    mov rsi, QWORD [rbp - 0x10]
+    add rsi, QWORD [rbp - 0x18]
+    inc rsi
+    callproc move_cursor
+    callproc puts, P(sl9)
+
+
+  .handle_input:
+    .while: ; rax == 0
+      mov rax, SYS_READ
+      mov rdi, STDIN
+      mov rsi, rbp
+      sub rsi, 0x28
+      mov rdx, 1
+      syscall
+      test rax, rax
+      jz .while
+    
+    mov rax, 0
+    mov al, [rbp - 0x28]
+    
+    .if_enter:
+      cmp al, 10
+      jne .if_up
+      .if_option_is_restart:
+        cmp QWORD [rbp - 0x18], 0
+        je _main.game_restart
+
+      .if_option_is_exit:
+        cmp QWORD [rbp - 0x18], 2
+        je _exit
+
+      .if_option_is_exit_to_main_menu:
+        cmp QWORD [rbp - 0x18], 1
+        callproc destroy_snake
+        jmp _main.game_start
+
+      jmp .handle_input
+    
+    .if_up:
+      cmp al, `w`
+      jne .if_down
+      dec QWORD [rbp - 0x18]
+      cmp QWORD [rbp - 0x18], 0
+      jnl .unhighlight_previous_option
+      inc QWORD [rbp - 0x18]
+
+      jmp .unhighlight_previous_option
+
+    .if_down:
+      cmp al, `s`
+      jne .handle_input
+      inc QWORD [rbp - 0x18]
+      cmp QWORD [rbp - 0x18], 2
+      jng .unhighlight_previous_option
+      dec QWORD [rbp - 0x18]
+
+      jmp .unhighlight_previous_option
+
+    jmp .handle_input
+
+  .menu_end:
+
+  mov rsp, rbp
+  pop rbp
   ret
 
-; rerender_game_frame() -> void
-_rerender_game_frame:
-  callproc clear_screen
-  callproc render_score
-  
+; render_full_snake() -> void
+_render_full_snake:
   push rax
   push rdi
   push rsi
@@ -906,17 +1119,21 @@ _rerender_game_frame:
   callproc move_cursor
   callproc putc, I(SNAKE_HEAD_CHAR)
   
-  mov rsi, 0
-  mov si, [fruitCoords + coordinate_s.y]
-  mov rdi, 0
-  mov di, [fruitCoords + coordinate_s.x]
-  callproc move_cursor
-  callproc putc, I(FRUIT_BASE_CHAR)
 
   pop rsi
   pop rdi
   pop rax
 
+  ret
+
+
+; rerender_game_frame() -> void
+_rerender_game_frame:
+  callproc clear_screen
+  callproc render_score
+  callproc render_fruit
+  callproc render_full_snake
+  
   ret
 
 ; destroy_snake() -> void
