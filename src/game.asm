@@ -59,6 +59,9 @@ section .data
   sl12 db `Exit to main menu`,0
   sl13 db `Exit game`,0
   sl14 db `Restart`,0
+  sl15 db `Terminal is`,10,0
+  sl16 db `too small!`,10,0
+
 
   dbgsl0 db `FCoords:`,0
   dbgsl1 db `HCoords:`,0
@@ -70,8 +73,14 @@ section .data
   ; Field
   fieldSize:
     istruc coordinate_s
-      at coordinate_s.y, dw 20
-      at coordinate_s.x, dw 70
+      at coordinate_s.y, dw 0
+      at coordinate_s.x, dw 0
+    iend
+
+  minFieldSize:
+    istruc coordinate_s
+      at coordinate_s.y, dw 8
+      at coordinate_s.x, dw 25
     iend
 
   ; Gameplay
@@ -118,9 +127,9 @@ _main:
   mov QWORD [mainBasePointer], rbp
 
   callproc init_winsize
-  callproc hide_cursor
   callproc init_termios
   callproc enable_raw_mode
+  callproc hide_cursor
 
   .game_start:
   mov rbp, QWORD [mainBasePointer]
@@ -138,14 +147,37 @@ _main:
   pop rbp
   ret
 
-; init_winsize() ->void
+; init_winsize() -> void
 _init_winsize:
   mov rax, SYS_IOCTL
   mov rdi, STDOUT
   mov rsi, TIOCGWINSZ
   mov rdx, fieldSize
   syscall
+  callproc validate_winsize
   ret
+
+; validate_winsize() -> void
+_validate_winsize:
+
+  mov di, WORD [fieldSize + coordinate_s.y]
+  cmp di, 8
+  jl _ask_to_expand_terminal
+  mov di, WORD [fieldSize + coordinate_s.x]
+  cmp di, 25
+  jl _ask_to_expand_terminal
+
+  ret
+
+; ask_to_expand_terminal() -> void
+_ask_to_expand_terminal:
+  callproc clear_screen
+  callproc move_cursor, I(0), I(0)
+  callproc puts, P(sl15)
+  callproc puts, P(sl16)
+  mov rax, SYS_EXIT
+  mov rdi, 0
+  syscall
 
 ; greet() -> void
 _greet:
