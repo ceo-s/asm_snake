@@ -60,6 +60,10 @@ section .data
   sl13 db `Exit game`,0
   sl14 db `Restart`,0
 
+  dbgsl0 db `FCoords:`,0
+  dbgsl1 db `HCoords:`,0
+  dbgsl2 db `logs`,0
+
   ; Intro
   countdownTimespec dq 1,0
 
@@ -205,7 +209,9 @@ _start_game:
   push 0
   push 0
   mov rax, QWORD [gameSpeedTimespec + 0x8]
-  mov rcx, QWORD [gameDifficulty]
+  mov rdi, QWORD [gameDifficulty]
+  mov rcx, 6
+  sub rcx, rdi
   shl rax, cl
   mov QWORD [rsp + 0x8], rax
 
@@ -432,25 +438,207 @@ _generate_fruit:
   push rax
   push rdi
   push rsi
+  push rcx
 
-  mov rdi, 0
-  mov rsi, 0
-  mov si, WORD [fieldSize + coordinate_s.x]
-  inc si
-  callproc randint
-  mov WORD [fruitCoords + coordinate_s.x], ax
+  mov rcx, 3
+  .for:
+    mov rdi, 0
+    mov rsi, 0
+    mov si, WORD [fieldSize + coordinate_s.x]
+    inc si
+    callproc randint
+    mov WORD [fruitCoords + coordinate_s.x], ax
 
-  mov rdi, 3
-  mov rsi, 0
-  mov si, WORD [fieldSize + coordinate_s.y]
-  inc si
-  callproc randint
-  mov WORD [fruitCoords + coordinate_s.y], ax
+    mov rdi, 3
+    mov rsi, 0
+    mov si, WORD [fieldSize + coordinate_s.y]
+    inc si
+    callproc randint
+    mov WORD [fruitCoords + coordinate_s.y], ax
 
+    callproc fruit_coords_are_snake
+    cmp rax, 0
+    je .procend
+
+    dec rcx
+    cmp rcx, 0
+    jg .for
+
+  callproc get_fruit_coords_from_free_space
+  mov DWORD [fruitCoords], eax
+
+  .procend:
+
+  pop rcx
   pop rsi
   pop rdi
   pop rax
   
+  ret
+
+; fruit_coords_are_snake() -> bool
+_fruit_coords_are_snake:
+  push rdi
+  push rsi
+  push rcx
+
+  mov rcx, QWORD [snake + snake_s.head]
+  mov rax, 0
+
+  .while:
+    cmp rcx, 0
+    je .endproc
+    mov edi, DWORD [rcx]
+    mov esi, DWORD [fruitCoords]
+    cmp edi, esi
+    je .endwhile
+
+    mov rcx, QWORD [rcx + listnode_s.next]
+    jmp .while
+  .endwhile:
+  
+  mov rax, 1
+  .endproc:
+  
+  pop rcx
+  pop rsi
+  pop rdi
+
+  ret
+
+; get_fruit_coords_from_free_space() -> coordinate_s
+_get_fruit_coords_from_free_space:
+  push rdi
+  push rsi
+  push rdx
+  push rbx
+  
+  push rbp
+  mov rbp, rsp
+
+  mov rax, 0
+  mov ax, WORD [fieldSize + coordinate_s.y]
+  sub ax, 2
+  mov rdi, 0
+  mov di, WORD [fieldSize + coordinate_s.x]
+  mov rdx, 0
+  mul di
+  mov di, 4
+  mov rdx, 0
+  mul rdi
+  sub rsp, rax
+
+  mov rbx, rsp
+  mov ecx, 0
+
+  .for: ; rbx != rbp
+    mov DWORD [rbx], ecx
+    inc ecx
+    add rbx, 4
+    cmp rbx, rbp
+    jne .for
+
+  mov rbx, QWORD [snake + snake_s.head]
+  .while1:
+    callproc get_coordinate_index, P(rbx)
+    shl rax, 2
+    mov DWORD [rsp + rax], -1
+
+    mov rbx, QWORD [rbx + listnode_s.next]
+    cmp rbx, 0
+    jne .while1
+
+  mov rdi, rsp
+  mov rsi, rbp
+  sub rsi, 4
+  .while2:
+    cmp rdi, rsi
+    jnl .endwhile2
+
+    cmp DWORD [rdi], -1
+    je .ptr1isneg
+    add rdi, 4
+    jmp .while2
+
+    .ptr1isneg:
+    cmp DWORD [rsi], -1
+    jne .ptr2ispos
+    sub rsi, 4
+    jmp .while2
+
+    .ptr2ispos:
+    mov eax, DWORD [rsi]
+    mov edx, DWORD [rdi]
+    mov DWORD [rsi], edx
+    mov DWORD [rdi], eax
+    add rdi, 4
+    sub rsi, 4
+    jmp .while2
+
+  .endwhile2:
+
+  mov rax, rdi
+  sub rax, rsp
+  shr rax, 2
+  callproc randint, I(0), I(rax)
+  shl rax, 2
+
+  mov edi, DWORD [rsp + rax]
+  callproc reverse_coordinate_index
+  add ax, 2
+  mov DWORD [fruitCoords], eax
+  push rax
+  pop rax
+
+  mov rsp, rbp
+  pop rbp
+
+  pop rbx
+  pop rdx
+  pop rsi
+  pop rdi
+
+  ret
+
+; get_coordinate_index(coordinate_s *coords) -> int
+_get_coordinate_index:
+  push rsi
+  push rdx
+
+  mov rax, 0
+  mov ax, WORD [rdi + coordinate_s.y]
+  sub ax, 3
+  mov rdx, 0
+  mul WORD [fieldSize + coordinate_s.x]
+  mov rsi, 0
+  mov si, WORD [rdi + coordinate_s.x]
+  dec si
+  add rax, rsi
+
+  pop rdx
+  pop rsi
+
+  ret
+
+; reverse_coordinate_index(int index) -> coordinate_s
+_reverse_coordinate_index:
+  push rsi
+  push rdx
+
+  mov rax, rdi
+  mov rdi, 0
+  mov di, WORD [fieldSize + coordinate_s.x]
+  mov rdx, 0
+  div di
+  inc rax
+  inc rdx
+
+  shl rdx, 16
+  mov dx, ax
+  mov rax, rdx
+
+  pop rdx
+  pop rsi
   ret
 
 ; render_fruit() -> void
@@ -579,6 +767,7 @@ _render_score:
   mov edi, DWORD [snake + snake_s.size]
   sub rdi, 2
   callproc print_integer
+
   callproc move_cursor, I(1), I(2)
 
   mov rcx, 0

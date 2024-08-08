@@ -1,3 +1,6 @@
+%ifndef SYSVABICALL_ASM
+%define SYSVABICALL_ASM
+
 %assign POINTER 0
 %assign INTEGER 1
 %assign FLOAT   2
@@ -48,3 +51,5 @@
   call procaddr
   %undef procaddr
 %endmacro
+
+%endif
