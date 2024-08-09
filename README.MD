@@ -2,6 +2,8 @@
 
 Simple WASD controlled snake game for terminal, written in x86_64 nasm assembly language
 
+![gameplay_video](gameplay.webm)
+
 ## How to launch
 
 - ### Install Dependencies
