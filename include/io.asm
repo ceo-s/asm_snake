@@ -2,6 +2,10 @@
 %define IO_ASM
 %include "string.asm"
 
+section .data
+  iosl0 db `Error opening file`,10,0
+  iosl1 db `Error closing file`,10,0
+
 section .text
 
 ; putc(char ch) -> void
@@ -75,6 +79,38 @@ _print_integer:
 
   mov rsp, rbp
   pop rbp
+  ret
+
+; open(char *path, int mode) -> int
+_open:
+  push rdx
+  mov rax, SYS_OPEN
+  mov rdx, 0644o
+  syscall
+  pop rdx
+
+  cmp rax, 0
+  jge .endproc
+  callproc puts, P(iosl0)
+  mov rax, SYS_EXIT
+  mov rdi, 1
+  syscall
+
+  .endproc:
+  ret
+
+; close(int fd) -> void
+_close:
+  mov rax, SYS_CLOSE
+  syscall
+  cmp rax, 0
+  jge .endproc
+  callproc puts, P(iosl1)
+  mov rax, SYS_EXIT
+  mov rdi, 1
+  syscall
+
+  .endproc:
   ret
 
 %endif

@@ -39,6 +39,9 @@ section .bss
   mainBasePointer resq 1
 
 section .data
+  ; Paths
+  pathDb db `db/record`,0
+
   ; ANSI strings
   redColor db ANSI_TEXT_COLOR_BOLD_RED
   noColor  db ANSI_TEXT_COLOR_NORMAL
@@ -49,7 +52,7 @@ section .data
   sl2 db `Allocating listnode failed! Exiting!\n`,0
   sl3 db `GAME OVER`,0
   sl4 db `SCORE: `,0
-  sl5 db `Record: 0`,0
+  sl5 db `Record: `,0
   sl6 db `Start game`,0
   sl7 db `Difficulty: [###--]`,0
   sl8 db `Exit`,0
@@ -98,6 +101,7 @@ section .data
       at coordinate_s.x, dw 0
     iend
 
+  gameRecord dd 228
   gameSpeedTimespec dq 0, MILISEC_TO_NANOSEC(31)
   gameDifficulty dq 3
   ; Outro
@@ -114,6 +118,7 @@ _start:
 _exit:
   callproc clear_screen
   callproc move_cursor, I(0), I(0)
+  callproc show_cursor
   callproc disable_raw_mode
   mov rax, SYS_EXIT
   syscall
@@ -128,6 +133,7 @@ _main:
 
   callproc init_winsize
   callproc init_termios
+  callproc init_record
   callproc enable_raw_mode
   callproc hide_cursor
 
@@ -866,6 +872,8 @@ _enter_main_menu:
   sub rsi, 1
   callproc move_cursor
   callproc puts, P(sl5)
+  mov edi, DWORD [gameRecord]
+  callproc print_integer
 
   ; 4
   mov rdi, QWORD [rbp - 0x8]
@@ -1230,6 +1238,11 @@ _enter_game_over_menu:
   callproc move_cursor
   callproc puts, P(sl13)
 
+  .update_record:
+    mov edi, DWORD [snake + snake_s.size]
+    sub edi, 2
+    callproc update_record
+
   .unhighlight_previous_option:
     mov rdi, QWORD [rbp - 0x8]
     sub rdi, 12
@@ -1380,4 +1393,31 @@ _destroy_snake:
   pop rdi
   pop rax
 
+  ret
+
+; init_record() -> void
+_init_record:
+  callproc open, P(pathDb), I(O_RDONLY)
+  push rax
+  mov rdi, rax
+  mov rax, SYS_READ
+  mov rsi, gameRecord
+  mov rdx, 4
+  syscall
+  pop rdi
+  callproc close
+  ret
+
+; update_record(int newRecord) -> void
+_update_record:
+  mov DWORD [gameRecord], edi
+  callproc open, P(pathDb), I(O_WRONLY)
+  push rax
+  mov rdi, rax
+  mov rax, SYS_WRITE
+  mov rsi, gameRecord
+  mov rdx, 4
+  syscall
+  pop rdi
+  callproc close
   ret
