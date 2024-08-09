@@ -1410,6 +1410,8 @@ _init_record:
 
 ; update_record(int newRecord) -> void
 _update_record:
+  cmp edi, DWORD [gameRecord]
+  jle .endproc
   mov DWORD [gameRecord], edi
   callproc open, P(pathDb), I(O_WRONLY)
   push rax
@@ -1420,4 +1422,5 @@ _update_record:
   syscall
   pop rdi
   callproc close
+  .endproc:
   ret
